@@ -1,0 +1,5 @@
+{
+  "name": "neon-hud-local",
+  "owner": { "name": "Aloister" },
+  "plugins": [{ "name": "neon-limity", "source": "./" }]
+}

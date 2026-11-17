@@ -491,6 +491,9 @@ function tipFor(s: Snapshot, t: TurnInfo, now: number): string {
     'Krótszy prompt = mniej tokenów = dłuższa misja.',
     'Ta koszula była na promocji w Neon Beach Outlet.',
     'Kliknij /limity, żeby schować HUD.',
+    'Czekasz na GTA 6? Ja czekam na reset limitu. Zobaczymy, co pierwsze 🌴',
+    'Koszula hawajska ✔ Okulary ✔ Zachód słońca ✔ Brakuje tylko premiery GTA 6.',
+    'Trenuję do GTA 6: 5 gwiazdek już mam, tylko w limitach 😎',
   ]
   if (five) {
     const r = resetIn(five.resetsAt, now)

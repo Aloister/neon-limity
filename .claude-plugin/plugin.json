@@ -1,1 +1,1 @@
-{ "name": "neon-limity", "version": "0.1.0", "description": "Neonowy HUD w klimacie Miami-noir: ile zostalo limitu 5h i tygodniowego", "types": "./types/index.d.ts" }
+{ "name": "neon-limity", "version": "0.2.0", "description": "GTA 6-inspired neon HUD for Claude Code: limits, context, cache, model and effort, with a pixel-art Claude in a Hawaiian shirt on a synthwave beach", "types": "./types/index.d.ts" }

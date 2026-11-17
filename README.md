@@ -1,6 +1,8 @@
-# neon-limity
+# neon-limity 🌴 GTA 6 vibes for Claude Code
 
-Neon HUD above the Claude Code prompt: context, cache, 5h and 7-day limits as ring gauges, model and effort badges, session cost, and a pixel-art Claude mascot in a Hawaiian shirt on a synthwave beach.
+Waiting for GTA 6? Bring the sunset, the neon and the wanted stars into your Claude Code sessions in the meantime.
+
+A GTA 6-inspired neon HUD above the Claude Code prompt: context, cache, 5h and 7-day limits as ring gauges, model and effort badges, session cost, and a pixel-art Claude mascot in a Hawaiian shirt on a synthwave beach.
 
 - The sun sinks as the 5h limit drains; night falls when it runs out.
 - Clouds and rain follow the context fill.
@@ -26,3 +28,7 @@ claude plugin install neon-limity --marketplace Aloister/neon-limity
 ```
 
 In the desktop app, where `/plugin` does not run: click + next to the prompt box, then Plugins, Add marketplace with `Aloister/neon-limity`, then Add plugin.
+
+## Disclaimer
+
+Unofficial fan project. Not affiliated with, endorsed or sponsored by Rockstar Games or Take-Two Interactive. "Grand Theft Auto" and "GTA" are trademarks of Take-Two Interactive Software. All art, sounds and code here are original.

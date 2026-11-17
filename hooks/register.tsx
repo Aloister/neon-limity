@@ -171,7 +171,8 @@ function walker(body: string[], x: number, y: number, s: number, path: string, d
 
 function mascot(mode: Mode): string {
   if (mode === 'nap') return ''
-  if (mode === 'think') return walker(OCTO, MX, MY, MS, '-40 0; 36 0; -40 0', '9s')
+  // Walks in place: the world scrolls past instead (see scrolling layers)
+  if (mode === 'think') return walker(OCTO, MX, MY, MS, '0 0; 0 0', '1s')
   if (mode === 'idle') {
     const lid = (cx: number) =>
       `<rect x="${MX + cx * MS}" y="${MY + 2 * MS}" width="${MS}" height="${2 * MS}" fill="${CLAUDE}"/>`
@@ -271,23 +272,52 @@ function buildScene(o: SceneOpts): string {
     .map((d, i) => `<rect x="0" y="${sunY + 22 - d - 6}" width="${W}" height="${1 + i * 0.6}" fill="black"/>`)
     .join('')
   const moon = u > 0.85 ? `<circle cx="150" cy="12" r="5" fill="#F4E9FF"/><circle cx="152" cy="10" r="5" fill="${skyTop}"/>` : ''
-  const waves = [[118, 48, 28], [124, 52, 16], [20, 50, 18], [90, 53, 10]]
-    .map(([x, y, w]) => `<rect x="${x}" y="${y}" width="${w}" height="2" fill="${PINK}" opacity="${(0.55 * (1 - u * 0.7)).toFixed(2)}"/>`)
+  const waveOp = (0.55 * (1 - u * 0.7)).toFixed(2)
+  const waveRects = (list: number[][]) =>
+    list.map(([x, y, w]) => `<rect x="${x}" y="${y}" width="${w}" height="2" fill="${PINK}" opacity="${waveOp}"/>`).join('')
+  // The sun's reflection stays put with the sun; the other waves drift
+  const reflection = waveRects([[118, 48, 28], [124, 52, 16]])
+  const waves = waveRects([[20, 50, 18], [90, 53, 10], [60, 48, 8], [150, 55, 12]])
+
+  // Walking: the world scrolls past in parallax, far layers slower
+  const scrolling = o.mode === 'think'
+  const layer = (content: string, dur: string) =>
+    scrolling
+      ? `<g><animateTransform attributeName="transform" type="translate" values="0 0; -${W} 0" dur="${dur}" repeatCount="indefinite"/>` +
+        `${content}<g transform="translate(${W} 0)">${content}</g></g>`
+      : content
+  const palmY = HORIZON - PALM.length * 3 + 2
+  const pebbles = [[20, 60], [58, 61], [88, 59], [118, 61], [160, 60]]
+    .map(([x, y]) => `<rect x="${x}" y="${y}" width="3" height="1" fill="#6B2E63"/>`)
     .join('')
+  const shells = [[45, 59], [138, 60]]
+    .map(([x, y]) => `<rect x="${x}" y="${y}" width="2" height="2" fill="${PINK}" opacity="0.8"/>`)
+    .join('')
+  // A neon lamp post, only out on the road while walking
+  const lamp =
+    `<rect x="132" y="38" width="2" height="${BEACH - 38}" fill="#12061F"/>` +
+    `<rect x="130" y="36" width="6" height="3" fill="${TEAL}"/>` +
+    `<rect x="128" y="39" width="10" height="1" fill="${TEAL}" opacity="0.35"/>`
+  const shoreProps = scrolling
+    ? pixels(PALM, 6, palmY, 3) + pixels(PALM, 92, palmY + 6, 3) + lamp + pebbles + shells
+    : pixels(PALM, 6, palmY, 3) + pebbles + shells
 
   const world =
     `<rect width="${W}" height="${HORIZON}" fill="url(#sky)"/>` +
-    stars +
+    layer(stars, '60s') +
     moon +
     `<circle cx="148" cy="${sunY}" r="22" fill="url(#sun)" mask="url(#cut)" clip-path="url(#above)"/>` +
     `<rect y="${HORIZON}" width="${W}" height="${H - HORIZON}" fill="url(#sea)"/>` +
-    waves +
+    reflection +
+    layer(waves, '12s') +
     (o.police ? police() : '') +
     `<rect y="${BEACH}" width="${W}" height="${H - BEACH}" fill="#3A1A3F"/>` +
     `<rect y="${BEACH}" width="${W}" height="1" fill="#6B2E63"/>` +
-    pixels(PALM, 6, HORIZON - PALM.length * 3 + 2, 3) +
+    layer(shoreProps, '5s') +
     (o.mode === 'nap' ? hammock() : '') +
-    (o.agents ? walker(OCTO, 22, H - 9 * 2 - 6, 2, '0 0; 14 0; 0 0', '4s') : '') +
+    (o.agents
+      ? walker(OCTO, 22, H - 9 * 2 - 6, 2, scrolling ? '0 0; 0 0' : '0 0; 14 0; 0 0', '4s')
+      : '') +
     mascot(o.mode) +
     weather(o.ctx)
 

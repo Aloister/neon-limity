@@ -1,1 +1,1 @@
-{ "name": "neon-limity", "version": "0.3.0", "description": "GTA 6-inspired neon HUD for Claude Code: limits, context, cache, model and effort, with a pixel-art Claude in a Hawaiian shirt on a synthwave beach", "types": "./types/index.d.ts" }
+{ "name": "neon-limity", "version": "0.4.0", "description": "GTA 6-inspired neon HUD for Claude Code: limits, context, cache, model and effort, with a pixel-art Claude in a Hawaiian shirt on a synthwave beach", "icon": "assets/icon.png", "types": "./types/index.d.ts" }

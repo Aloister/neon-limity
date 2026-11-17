@@ -15,8 +15,8 @@ const turn = atom(
 )
 const scene = atom(
   { plugin: 'neon-limity', key: 'scene' } as const,
-  { activity: 'think', agents: 0, isNapping: false } as SceneState,
-  { shape: 'scene-1' },
+  { activity: 'think', agents: 0, isNapping: false, radio: 0, song: '' } as SceneState,
+  { shape: 'scene-2' },
 )
 const isHidden = atom({ plugin: 'neon-limity', key: 'isHidden' } as const, false)
 const isWorking = atom({ plugin: 'neon-limity', key: 'isWorking' } as const, false)
@@ -561,6 +561,145 @@ function scheduleNap($: any, ms: number) {
   })
 }
 
+// ── Radio ─────────────────────────────────────────────────────────
+// Fictional stations and songs, all made up for this mod
+const STATIONS: { name: string; songs: string[] }[] = [
+  {
+    name: 'Neon FM 88.5',
+    songs: ['Midnight Turbo — Chrome Hearts', 'Palm Highway — Laser Coast', 'Pink Horizon — Night Racer'],
+  },
+  {
+    name: 'Lo-Fi Beach 101.3',
+    songs: ['Kokos i deszcz — Beachtape', 'Sunset Loop — Sandy Beats', 'Hamak — Slow Waves'],
+  },
+  {
+    name: 'Talk Token 94.7',
+    songs: ['„Czy cache to nowa ropa?”', '„Limity: mit czy fakt?”', '„Prompt dnia od słuchacza”'],
+  },
+  {
+    name: 'Palm Bay Classics 97.1',
+    songs: ['Retro Sunrise — The Pixels', 'Coral Dreams — Synthia', 'Boardwalk Memories — VHS Kids'],
+  },
+  { name: 'Radio wyłączone', songs: [''] },
+]
+const RADIO_OFF = STATIONS.length - 1
+
+function pickSong(station: number, salt: number): string {
+  const songs = STATIONS[station]?.songs ?? ['']
+  return songs[Math.abs(salt) % songs.length] ?? ''
+}
+
+async function nextStation($: any) {
+  const cur = Number((await $.store.get('radio')) ?? 0)
+  const nxt = (cur + 1) % STATIONS.length
+  await $.store.set('radio', nxt)
+  const song = pickSong(nxt, Math.floor(Math.random() * 100))
+  await update($, scene, sc => ({ ...sc, radio: nxt, song }))
+  $.ui.toast(nxt === RADIO_OFF ? '📻 Radio wyłączone' : `📻 ${STATIONS[nxt]!.name} — ♪ ${song}`)
+}
+
+// ── Mission names ─────────────────────────────────────────────────
+const DISTRICTS = ['w Neon Bay', 'na Palm Strip', 'w Sunset Docks', 'na Pixel Pier', 'w Coral Heights', 'na Laser Avenue']
+
+function hash(text: string): number {
+  let h = 0
+  for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0
+  return Math.abs(h)
+}
+
+function missionNameFor(text: string): string | undefined {
+  const words = text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 1)
+    .slice(0, 4)
+  if (words.length === 0) return undefined
+  const title = words.join(' ').toUpperCase()
+  return `„${title.length > 32 ? `${title.slice(0, 31)}…` : title}” ${DISTRICTS[hash(text) % DISTRICTS.length]}`
+}
+
+// ── Stats and achievements (kept across sessions in $.store) ──────
+type Stats = {
+  missions: number
+  prompts: number
+  turns: number
+  usd: number
+  longestSec: number
+  wasted: number
+  models: Record<string, number>
+  unlocked: string[]
+}
+const EMPTY_STATS: Stats = { missions: 0, prompts: 0, turns: 0, usd: 0, longestSec: 0, wasted: 0, models: {}, unlocked: [] }
+
+const ACHIEVEMENTS: { id: string; name: string; desc: string }[] = [
+  { id: 'first_mission', name: 'Pierwsza misja', desc: 'Zalicz pierwszą misję' },
+  { id: 'veteran', name: 'Weteran plaży', desc: '10 zaliczonych misji' },
+  { id: 'chatty', name: 'Gaduła', desc: '100 wysłanych promptów' },
+  { id: 'marathon', name: 'Maraton', desc: 'Jedna misja dłuższa niż 10 minut' },
+  { id: 'cache_master', name: 'Mistrz cache', desc: 'Cache 90%+ przy ponad 200k tokenów w sesji' },
+  { id: 'big_spender', name: 'Gruby portfel', desc: 'Wydaj łącznie $10' },
+  { id: 'night_owl', name: 'Nocny marek', desc: 'Wyślij prompt między północą a 4:00' },
+  { id: 'wanted', name: 'Poszukiwany', desc: 'Dobij do 4 gwiazdek WANTED' },
+  { id: 'survivor', name: 'Przeżyłem WASTED', desc: 'Wróć do gry po wyczerpanym limicie' },
+]
+
+async function loadStats($: any): Promise<Stats> {
+  const raw = (await $.store.get('stats')) as Partial<Stats> | undefined
+  return { ...EMPTY_STATS, ...(raw ?? {}), models: { ...(raw?.models ?? {}) }, unlocked: [...(raw?.unlocked ?? [])] }
+}
+
+// Applies `change`, unlocks what `earned` says, saves, and announces new trophies
+async function bumpStats($: any, change: (s: Stats) => void, earned: (s: Stats) => string[]) {
+  const s = await loadStats($)
+  change(s)
+  const fresh = earned(s).filter(id => !s.unlocked.includes(id))
+  s.unlocked.push(...fresh)
+  await $.store.set('stats', s)
+  for (const id of fresh) {
+    const a = ACHIEVEMENTS.find(x => x.id === id)
+    if (a) $.ui.toast(`🏆 OSIĄGNIĘCIE ODBLOKOWANE: ${a.name} — ${a.desc}`, { timeoutMs: 6000 })
+  }
+  if (fresh.length) void $.audio.play({ asset: 'sounds/mission.wav' }).catch(() => undefined)
+}
+
+function fmtSec(sec: number): string {
+  const m = Math.floor(sec / 60)
+  return m > 0 ? `${m}m ${sec % 60}s` : `${sec}s`
+}
+
+async function statsText($: any): Promise<string> {
+  const s = await loadStats($)
+  const fav = Object.entries(s.models).sort((a, b) => b[1] - a[1])[0]
+  const trophies = ACHIEVEMENTS.map(a => `${s.unlocked.includes(a.id) ? '🏆' : '🔒'} ${a.name} — ${a.desc}`)
+  return [
+    '**STATYSTYKI GRACZA** 🌴',
+    '',
+    `Misje zaliczone: **${s.missions}**`,
+    `Prompty: ${s.prompts} · tury: ${s.turns}`,
+    `Wydana kasa: **$${s.usd.toFixed(2)}**`,
+    `Najdłuższa misja: ${fmtSec(s.longestSec)}`,
+    `Ulubiony model: ${fav ? `${shortModel(fav[0])} (${fav[1]} tur)` : '—'}`,
+    `WASTED: ${s.wasted}×`,
+    '',
+    `**Osiągnięcia (${s.unlocked.length}/${ACHIEVEMENTS.length})**`,
+    ...trophies,
+  ].join('\n')
+}
+
+async function greetOncePerDay($: any) {
+  const day = new Date().toISOString().slice(0, 10)
+  if ((await $.store.get('greetDay')) === day) return
+  await $.store.set('greetDay', day)
+  $.ui.toast('📱 SMS od: Claude — „Jestem na plaży. Wpadaj, jak będziesz miał misję.”', { timeoutMs: 6000 })
+}
+
+async function restoreRadio($: any) {
+  const radio = Number((await $.store.get('radio')) ?? 0) % STATIONS.length
+  await update($, scene, sc => ({ ...sc, radio, song: sc.song || pickSong(radio, 0) }))
+}
+
 // ── Hooks ─────────────────────────────────────────────────────────
 export const register: Register = on => {
   const warned = new Set<string>()
@@ -574,9 +713,19 @@ export const register: Register = on => {
       name: 'limity',
       description: 'Pokaż / schowaj neonowy HUD limitów nad polem wiadomości',
     })
+    await $.command.register({
+      name: 'statystyki',
+      description: 'Statystyki gracza i osiągnięcia z neonowego HUD',
+    })
     await pull($)
+    await restoreRadio($).catch(() => undefined)
+    await greetOncePerDay($).catch(() => undefined)
 
     return next(e)
+  })
+
+  on('command.run', { command: 'statystyki' }, async $ => {
+    return { text: await statsText($) }
   })
 
   on('command.run', { command: 'limity' }, async $ => {
@@ -594,8 +743,23 @@ export const register: Register = on => {
     napTimer?.cancel()
     napTimer = undefined
     await update($, isWorking, () => true).catch(() => undefined)
-    await update($, scene, sc => ({ ...sc, activity: 'think', isNapping: false })).catch(() => undefined)
+    const missionName = missionNameFor(e.text)
+    await update($, scene, sc => ({
+      ...sc,
+      activity: 'think',
+      isNapping: false,
+      missionName,
+      song: pickSong(sc.radio, hash(e.text)),
+    })).catch(() => undefined)
     await update($, turn, t => ({ ...t, prompts: t.prompts + 1 })).catch(() => undefined)
+    const hour = new Date().getHours()
+    await bumpStats(
+      $,
+      s => {
+        s.prompts += 1
+      },
+      s => [...(s.prompts >= 100 ? ['chatty'] : []), ...(hour < 4 ? ['night_owl'] : [])],
+    ).catch(() => undefined)
 
     return next(e)
   })
@@ -666,10 +830,35 @@ export const register: Register = on => {
       }
 
       // Mission passed: a long or busy turn earns the banner and the jingle
-      if (e.reason === 'answer' && (secs >= MISSION_MIN_SEC || turnTools >= MISSION_MIN_TOOLS)) {
+      const passed = e.reason === 'answer' && (secs >= MISSION_MIN_SEC || turnTools >= MISSION_MIN_TOOLS)
+      if (passed) {
         flash($, 'banner', 'MISJA ZALICZONA', 5200, now)
         void $.audio.play({ asset: 'sounds/mission.wav' }).catch(() => undefined)
       }
+
+      // Career stats and trophies
+      const delta = usd !== undefined && sc.lastUsd !== undefined ? Math.max(0, usd - sc.lastUsd) : 0
+      const tt = await read($, turn)
+      const cacheAll = tt.cacheRead + tt.cacheWrite + tt.uncached
+      const model = shortModel(u?.model ?? tt.model)
+      await bumpStats(
+        $,
+        s => {
+          s.turns += 1
+          s.usd += delta
+          s.longestSec = Math.max(s.longestSec, passed ? secs : 0)
+          if (passed) s.missions += 1
+          if (model) s.models[model] = (s.models[model] ?? 0) + 1
+        },
+        s => [
+          ...(s.missions >= 1 ? ['first_mission'] : []),
+          ...(s.missions >= 10 ? ['veteran'] : []),
+          ...(s.longestSec >= 600 ? ['marathon'] : []),
+          ...(s.usd >= 10 ? ['big_spender'] : []),
+          ...(cacheAll > 200_000 && tt.cacheRead / cacheAll >= 0.9 ? ['cache_master'] : []),
+        ],
+      ).catch(() => undefined)
+      await update($, scene, x => ({ ...x, missionName: undefined })).catch(() => undefined)
 
       // Nap: no new prompt for a while and Claude dozes off on the hammock
       napTimer?.cancel()
@@ -690,14 +879,33 @@ export const register: Register = on => {
           warned.add(id)
           $.ui.toast(
             t === 0
-              ? `WASTED — limit ${label(l.kind).sub} wyczerpany`
-              : `★ WANTED — limit ${label(l.kind).sub}: zostało ${pct}%`,
+              ? `📱 SMS od: Limit ${label(l.kind).sub} — „WASTED. Widzimy się po resecie.”`
+              : t === 15
+                ? `📱 SMS od: Limit ${label(l.kind).sub} — „Zostało ${pct}%. Policja na ogonie, zwolnij.”`
+                : `📱 SMS od: Limit ${label(l.kind).sub} — „Zostało ${pct}%. Uważaj na zakrętach.”`,
+            { timeoutMs: 6000 },
           )
-          if (t === 0) void $.audio.play({ asset: 'sounds/wasted.wav' }).catch(() => undefined)
+          if (t === 0) {
+            void $.audio.play({ asset: 'sounds/wasted.wav' }).catch(() => undefined)
+            await bumpStats(
+              $,
+              s => {
+                s.wasted += 1
+              },
+              () => [],
+            ).catch(() => undefined)
+          }
         }
         break
       }
     }
+    const heat5 = stars(e.rateLimits)
+    const allBack = e.rateLimits.length > 0 && !isWasted(e.rateLimits)
+    await bumpStats(
+      $,
+      () => undefined,
+      s => [...(heat5 >= 4 ? ['wanted'] : []), ...(allBack && s.wasted > 0 ? ['survivor'] : [])],
+    ).catch(() => undefined)
 
     return next(e)
   })
@@ -719,7 +927,10 @@ export const register: Register = on => {
     let m = mission(s.limits)
     if (!wasted && working) {
       m = {
-        text: ACTIVITY_TEXT[sc.activity] + (sc.agents > 0 ? ` + ekipa (${sc.agents})` : ''),
+        text:
+          (sc.missionName ? `MISJA ${sc.missionName} · ` : '') +
+          ACTIVITY_TEXT[sc.activity] +
+          (sc.agents > 0 ? ` + ekipa (${sc.agents})` : ''),
         color: SUN,
       }
     } else if (!wasted && sc.isNapping) {
@@ -855,6 +1066,18 @@ export const register: Register = on => {
           <Text weight="bold" italic color={m.color}>
             {`▶ ${m.text}`}
           </Text>
+          {working && (
+            <Box flexDirection="row" alignItems="center" gap={1}>
+              <Text color={VIOLET}>
+                {sc.radio === RADIO_OFF
+                  ? '📻 radio wyłączone'
+                  : `📻 ${STATIONS[sc.radio]?.name ?? ''} · ♪ ${sc.song}`}
+              </Text>
+              <Button key="radio" plain label="Zmień stację radia" onPress={() => void nextStation($).catch(() => undefined)}>
+                <Text color={TEAL}>⏭ stacja</Text>
+              </Button>
+            </Box>
+          )}
         </Box>
         <Box flexDirection="column" alignItems="center" gap={1}>
           <Svg

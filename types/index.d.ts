@@ -26,6 +26,11 @@ export type SceneState = {
   banner?: { text: string; until: number }
   cash?: { text: string; until: number }
   lastUsd?: number
+  /** The current task's title, made from the prompt. */
+  missionName?: string
+  /** Radio station index into STATIONS, and the song playing on it. */
+  radio: number
+  song: string
 }
 
 declare module 'claude-code' {

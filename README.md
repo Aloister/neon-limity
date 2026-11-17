@@ -1,5 +1,7 @@
 # neon-limity 🌴 GTA 6 vibes for Claude Code
 
+![Claude Code: Neon Edition](assets/social-preview.png)
+
 Waiting for GTA 6? Bring the sunset, the neon and the wanted stars into your Claude Code sessions in the meantime.
 
 A GTA 6-inspired neon HUD above the Claude Code prompt: context, cache, 5h and 7-day limits as ring gauges, model and effort badges, session cost, and a pixel-art Claude mascot in a Hawaiian shirt on a synthwave beach.
@@ -9,7 +11,13 @@ A GTA 6-inspired neon HUD above the Claude Code prompt: context, cache, 5h and 7
 - While Claude works the mascot walks in place as the beach, palms, waves and stars scroll past in parallax; at tools it stops and uses a laptop, a terminal or binoculars depending on the tool. A mini Claude joins when a subagent runs.
 - While waiting it takes its shades off and blinks; after 15 idle minutes it naps on a hammock.
 - Mission banner with a jingle after a long turn, a cash pickup showing each answer's cost, a police boat at a high wanted level, and a WASTED screen when a limit runs out.
+- Every task becomes a named mission (`MISJA „ADD DARK MODE” in Neon Bay`).
+- 📻 In-car radio while Claude works: five made-up stations (synthwave, lo-fi, a talk show about tokens), switch with the ⏭ button.
+- 📱 Limit warnings arrive as in-game phone texts.
+- 🏆 Nine achievements (first mission, marathon, cache master, night owl, wanted, survived WASTED…) and a `/statystyki` career screen, kept across sessions.
 - `/limity` hides or shows the HUD. The "💬" button under the scene gives a random tip.
+
+![The scene in action: walking, mission passed, hammock nap, WASTED](assets/demo.gif)
 
 Labels in the HUD are in Polish.
 

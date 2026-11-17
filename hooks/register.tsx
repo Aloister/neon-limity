@@ -15,8 +15,8 @@ const turn = atom(
 )
 const scene = atom(
   { plugin: 'neon-limity', key: 'scene' } as const,
-  { activity: 'think', agents: 0, isNapping: false, radio: 0, song: '' } as SceneState,
-  { shape: 'scene-2' },
+  { activity: 'think', agents: 0, isNapping: false } as SceneState,
+  { shape: 'scene-3' },
 )
 const isHidden = atom({ plugin: 'neon-limity', key: 'isHidden' } as const, false)
 const isWorking = atom({ plugin: 'neon-limity', key: 'isWorking' } as const, false)
@@ -24,6 +24,7 @@ const isWorking = atom({ plugin: 'neon-limity', key: 'isWorking' } as const, fal
 const NAP_AFTER_MS = 15 * 60 * 1000
 const MISSION_MIN_SEC = 45
 const MISSION_MIN_TOOLS = 5
+const DRIVE_AFTER_MS = 20 * 1000
 
 // ── Sunset palette ────────────────────────────────────────────────
 const PINK = '#FF2E97'
@@ -128,7 +129,184 @@ function mix(a: string, b: string, t: number): string {
   return `#${c.map(v => v.toString(16).padStart(2, '0')).join('')}`
 }
 
-type Mode = 'idle' | 'nap' | 'think' | 'edit' | 'bash' | 'web'
+// ── Palms: a row of real ones on the sand ─────────────────────────
+// Green fronds drooping both ways, coconuts, a curved banded trunk
+const PALM_TREE = [
+  '......L..L......',
+  '...LLLLGGLLLL...',
+  '.LLGGGGLLGGGGLL.',
+  'LGG...GccG...GGL',
+  'G.....cBbc.....G',
+  '.......Bb.......',
+  '.......bB.......',
+  '.......Bb.......',
+  '......Bb........',
+  '......bB........',
+  '......Bb........',
+  '......bB........',
+  '.....Bb.........',
+  '.....bB.........',
+  '.....Bb.........',
+  '.....bB.........',
+  '....bBBb........',
+]
+const PALM_PIX: Record<string, string> = {
+  L: '#3FBF6F',
+  G: '#1E7A48',
+  c: '#5A3A1A',
+  B: '#A8743F',
+  b: '#6E4524',
+}
+const PALM_XS = [2, 46, 90, 134]
+
+function palmRow(skip: number[] = []): string {
+  const s = 2
+  const oy = BEACH + 2 - PALM_TREE.length * s
+  let out = ''
+  PALM_XS.forEach((ox, i) => {
+    if (skip.includes(i)) return
+    PALM_TREE.forEach((row, y) => {
+      row.split('').forEach((ch, x) => {
+        const fill = PALM_PIX[ch]
+        if (fill) out += `<rect x="${ox + x * s}" y="${oy + y * s}" width="${s}" height="${s}" fill="${fill}"/>`
+      })
+    })
+  })
+  return out
+}
+
+// ── City skyline on the horizon: beach, downtown, clubs, hotels, pier ──
+const SKY_W = 528
+
+function skyline(): string {
+  const base = HORIZON
+  const body = '#1A0B2E'
+  const edge = '#3A1A55'
+  let out = `<rect x="20" y="${base - 3}" width="60" height="3" fill="${body}" opacity="0.7"/>`
+  const building = (x: number, w: number, h: number) => {
+    let b = `<rect x="${x}" y="${base - h}" width="${w}" height="${h}" fill="${body}"/>`
+    b += `<rect x="${x}" y="${base - h}" width="${w}" height="1" fill="${edge}"/>`
+    for (let wy = base - h + 3; wy < base - 2; wy += 3) {
+      for (let wx = x + 2; wx < x + w - 1; wx += 3) {
+        const k = (wx * 7 + wy * 13) % 5
+        if (k < 2) {
+          const c = k === 0 ? SUN : wx % 2 ? PINK : TEAL
+          b += `<rect x="${wx}" y="${wy}" width="1" height="1" fill="${c}" opacity="0.85"/>`
+        }
+      }
+    }
+    return b
+  }
+  const neon = (x: number, y: number, text: string, color: string, dur: string) =>
+    `<text x="${x}" y="${y}" font-family="monospace" font-weight="bold" font-size="6" fill="${color}" filter="url(#glow)">${text}` +
+    `<animate attributeName="opacity" values="1;1;0.25;1" keyTimes="0;0.7;0.8;1" dur="${dur}" repeatCount="indefinite"/></text>`
+
+  // Downtown towers
+  for (const [x, w, h] of [[100, 14, 26], [116, 10, 18], [128, 18, 32], [148, 12, 22], [162, 16, 28], [180, 10, 16], [192, 20, 36], [214, 12, 20], [228, 10, 24]]) {
+    out += building(x!, w!, h!)
+  }
+  out +=
+    `<rect x="201" y="${base - 42}" width="1" height="6" fill="${body}"/>` +
+    `<rect x="200" y="${base - 43}" width="3" height="2" fill="${RED}"><animate attributeName="opacity" values="1;0.1" calcMode="discrete" dur="1s" repeatCount="indefinite"/></rect>`
+  // Clubs
+  out += building(252, 30, 10) + neon(256, base - 12, 'CLUB', PINK, '2.2s')
+  out += building(290, 22, 8) + neon(294, base - 10, 'BAR', TEAL, '1.7s')
+  out += building(316, 22, 12) + neon(318, base - 14, '24/7', SUN, '2.8s')
+  // Hotel strip
+  out += building(352, 26, 20) + `<rect x="352" y="${base - 20}" width="26" height="2" fill="${PINK}"/>` + neon(354, base - 22, 'HOTEL', TEAL, '3.1s')
+  out += building(384, 14, 14) + building(402, 22, 24) + building(406, 14, 28) + building(430, 10, 12)
+  // Pier
+  out += `<rect x="460" y="${base - 3}" width="56" height="2" fill="${body}"/>`
+  for (let px = 462; px < 516; px += 9) out += `<rect x="${px}" y="${base - 1}" width="1" height="2" fill="${body}"/>`
+  return out
+}
+
+// ── The car: a pink convertible, Claude at the wheel ──────────────
+// Side view facing right: long low body, raised rear deck, open top,
+// raked windshield, round wheels in arches, chrome bumpers, lights.
+function car(): string {
+  const cx = 46
+  const cy = H - 29
+  const r = (x: number, y: number, w: number, h: number, fill: string, extra = '') =>
+    `<rect x="${cx + x}" y="${cy + y}" width="${w}" height="${h}" fill="${fill}"${extra}/>`
+  const CHROME = '#C8CCD8'
+  const SHADE = '#B81C6E'
+  const DARK = '#12061F'
+
+  const head = pixels(OCTO.slice(0, 4), cx + 14, cy, 2)
+  const seat = r(10, 4, 5, 9, '#3A1A3F')
+  const body =
+    r(2, 9, 30, 3, PINK) + // rear deck
+    r(52, 10, 28, 2, PINK) + // hood
+    r(0, 12, 84, 6, PINK) + // main body
+    r(0, 18, 84, 2, SHADE) + // lower shading
+    r(2, 14, 80, 1, TEAL) + // side stripe
+    r(34, 12, 1, 6, SHADE) + // door line
+    r(39, 13, 3, 1, CHROME) + // door handle
+    r(80, 12, 4, 2, SUN) + // headlight
+    r(0, 12, 2, 2, RED) + // tail light
+    r(-1, 16, 4, 2, CHROME) + // rear bumper
+    r(81, 16, 5, 2, CHROME) + // front bumper
+    r(10, 16, 16, 4, DARK) + // wheel arches
+    r(58, 16, 16, 4, DARK)
+  const steering = r(42, 6, 1, 6, DARK) + r(40, 5, 4, 2, DARK)
+  const windshield =
+    `<polygon points="${cx + 49},${cy + 10} ${cx + 53},${cy + 10} ${cx + 47},${cy + 1} ${cx + 43},${cy + 1}" ` +
+    `fill="${TEAL}" opacity="0.5" stroke="${CHROME}" stroke-width="1"/>`
+  const wheel = (wx: number) =>
+    `<circle cx="${cx + wx}" cy="${cy + 21}" r="5" fill="#0D0D12"/>` +
+    `<circle cx="${cx + wx}" cy="${cy + 21}" r="2.2" fill="${CHROME}"/>` +
+    `<g><animateTransform attributeName="transform" type="rotate" values="0 ${cx + wx} ${cy + 21}; 360 ${cx + wx} ${cy + 21}" dur="0.3s" repeatCount="indefinite"/>` +
+    `<rect x="${cx + wx - 4}" y="${cy + 20.5}" width="8" height="1" fill="#5A5F73"/>` +
+    `<rect x="${cx + wx - 0.5}" y="${cy + 17}" width="1" height="8" fill="#5A5F73"/></g>`
+  const lines = [
+    [cy + 4, 14],
+    [cy + 11, 18],
+    [cy + 17, 12],
+  ]
+    .map(
+      ([y, w], i) =>
+        `<rect x="${cx - 8}" y="${y}" width="${w}" height="1" fill="#FFFFFF" opacity="0.8">` +
+        `<animateTransform attributeName="transform" type="translate" values="0 0; -30 0" dur="0.4s" begin="${i * 0.13}s" repeatCount="indefinite"/>` +
+        `<animate attributeName="opacity" values="0.8;0" dur="0.4s" begin="${i * 0.13}s" repeatCount="indefinite"/></rect>`,
+    )
+    .join('')
+
+  return (
+    lines +
+    `<g><animateTransform attributeName="transform" type="translate" values="0 0; 0 -1" calcMode="discrete" dur="0.2s" repeatCount="indefinite"/>` +
+    seat +
+    head +
+    steering +
+    body +
+    windshield +
+    `</g>` +
+    wheel(18) +
+    wheel(66)
+  )
+}
+
+// ── Police at WASTED: a cruiser parked by Claude, lights flashing ──
+const COP_CAR = ['....WWWWW.....', '...WkkWkkW....', 'KKKKKKKKKKKKKK', 'WWWWWWWWWWWWWW', 'KKKKKKKKKKKKKK']
+
+function policeCar(): string {
+  const s = 2
+  const x = 122
+  const y = BEACH + 3 - 6 * s
+  const flash = (lx: number, a: string, b: string) =>
+    `<rect x="${x + lx * s}" y="${y - s}" width="${2 * s}" height="${s}" fill="${a}"><animate attributeName="fill" values="${a};${b}" calcMode="discrete" dur="0.3s" repeatCount="indefinite"/></rect>`
+  const wheel = (wx: number) => `<rect x="${x + wx * s}" y="${y + 5 * s}" width="${2 * s}" height="${s}" fill="#0D0D12"/>`
+  return (
+    `<rect width="${W}" height="${H}" fill="${RED}" opacity="0.16"><animate attributeName="fill" values="${RED};#2E6BFF" calcMode="discrete" dur="0.3s" repeatCount="indefinite"/></rect>` +
+    pixels(COP_CAR, x, y, s) +
+    flash(5, RED, '#2E6BFF') +
+    flash(7, '#2E6BFF', RED) +
+    wheel(1) +
+    wheel(10)
+  )
+}
+
+type Mode = 'idle' | 'nap' | 'think' | 'drive' | 'edit' | 'bash' | 'web'
 type SceneOpts = {
   mode: Mode
   agents: boolean
@@ -173,6 +351,7 @@ function mascot(mode: Mode): string {
   if (mode === 'nap') return ''
   // Walks in place: the world scrolls past instead (see scrolling layers)
   if (mode === 'think') return walker(OCTO, MX, MY, MS, '0 0; 0 0', '1s')
+  if (mode === 'drive') return car()
   if (mode === 'idle') {
     const lid = (cx: number) =>
       `<rect x="${MX + cx * MS}" y="${MY + 2 * MS}" width="${MS}" height="${2 * MS}" fill="${CLAUDE}"/>`
@@ -279,43 +458,45 @@ function buildScene(o: SceneOpts): string {
   const reflection = waveRects([[118, 48, 28], [124, 52, 16]])
   const waves = waveRects([[20, 50, 18], [90, 53, 10], [60, 48, 8], [150, 55, 12]])
 
-  // Walking: the world scrolls past in parallax, far layers slower
-  const scrolling = o.mode === 'think'
-  const layer = (content: string, dur: string) =>
+  // Walking or driving: the world scrolls past in parallax, far layers slower;
+  // in the car everything goes about three times faster
+  const driving = o.mode === 'drive'
+  const scrolling = o.mode === 'think' || driving
+  const speed = driving
+    ? { stars: '20s', city: '7s', waves: '4s', shore: '1.4s' }
+    : { stars: '60s', city: '24s', waves: '12s', shore: '5s' }
+  const layer = (content: string, dur: string, width = W) =>
     scrolling
-      ? `<g><animateTransform attributeName="transform" type="translate" values="0 0; -${W} 0" dur="${dur}" repeatCount="indefinite"/>` +
-        `${content}<g transform="translate(${W} 0)">${content}</g></g>`
+      ? `<g><animateTransform attributeName="transform" type="translate" values="0 0; -${width} 0" dur="${dur}" repeatCount="indefinite"/>` +
+        `${content}<g transform="translate(${width} 0)">${content}</g></g>`
       : content
-  const palmY = HORIZON - PALM.length * 3 + 2
   const pebbles = [[20, 60], [58, 61], [88, 59], [118, 61], [160, 60]]
     .map(([x, y]) => `<rect x="${x}" y="${y}" width="3" height="1" fill="#6B2E63"/>`)
     .join('')
-  const shells = [[45, 59], [138, 60]]
+  const shells = [[30, 59], [110, 60]]
     .map(([x, y]) => `<rect x="${x}" y="${y}" width="2" height="2" fill="${PINK}" opacity="0.8"/>`)
     .join('')
-  // A neon lamp post, only out on the road while walking
-  const lamp =
-    `<rect x="132" y="38" width="2" height="${BEACH - 38}" fill="#12061F"/>` +
-    `<rect x="130" y="36" width="6" height="3" fill="${TEAL}"/>` +
-    `<rect x="128" y="39" width="10" height="1" fill="${TEAL}" opacity="0.35"/>`
-  const shoreProps = scrolling
-    ? pixels(PALM, 6, palmY, 3) + pixels(PALM, 92, palmY + 6, 3) + lamp + pebbles + shells
-    : pixels(PALM, 6, palmY, 3) + pebbles + shells
+  // Neon palms in one row on the sand; the hammock needs the second spot free
+  const shoreProps = palmRow(o.mode === 'nap' ? [1] : []) + pebbles + shells
 
   const world =
     `<rect width="${W}" height="${HORIZON}" fill="url(#sky)"/>` +
-    layer(stars, '60s') +
+    layer(stars, speed.stars) +
     moon +
     `<circle cx="148" cy="${sunY}" r="22" fill="url(#sun)" mask="url(#cut)" clip-path="url(#above)"/>` +
+    (scrolling
+      ? layer(skyline(), speed.city, SKY_W)
+      : // Standing still: the calm stretch (pier, open water) so the sun stays clear
+        `<g transform="translate(-440 0)">${skyline()}<g transform="translate(${SKY_W} 0)">${skyline()}</g></g>`) +
     `<rect y="${HORIZON}" width="${W}" height="${H - HORIZON}" fill="url(#sea)"/>` +
     reflection +
-    layer(waves, '12s') +
+    layer(waves, speed.waves) +
     (o.police ? police() : '') +
     `<rect y="${BEACH}" width="${W}" height="${H - BEACH}" fill="#3A1A3F"/>` +
     `<rect y="${BEACH}" width="${W}" height="1" fill="#6B2E63"/>` +
-    layer(shoreProps, '5s') +
+    layer(shoreProps, speed.shore) +
     (o.mode === 'nap' ? hammock() : '') +
-    (o.agents
+    (o.agents && !driving
       ? walker(OCTO, 22, H - 9 * 2 - 6, 2, scrolling ? '0 0; 0 0' : '0 0; 14 0; 0 0', '4s')
       : '') +
     mascot(o.mode) +
@@ -351,8 +532,11 @@ function buildScene(o: SceneOpts): string {
     `<mask id="cut"><rect width="${W}" height="${H}" fill="white"/>${stripes}</mask>` +
     `<clipPath id="above"><rect width="${W}" height="${HORIZON}"/></clipPath>` +
     `<filter id="gray"><feColorMatrix type="saturate" values="0"/></filter>` +
+    `<filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="1.1" result="b"/>` +
+    `<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>` +
     `</defs>` +
     `<g${o.wasted ? ' filter="url(#gray)"' : ''}>${world}</g>` +
+    (o.wasted ? policeCar() : '') +
     cash +
     banner +
     wasted +
@@ -376,9 +560,9 @@ function ring(pct: number, color: string): string {
 
 // ── Helpers ───────────────────────────────────────────────────────
 function label(kind: string): { name: string; sub: string; color: string } {
-  if (kind === 'five_hour') return { name: 'ZDROWIE', sub: '5h', color: PINK }
-  if (kind === 'seven_day') return { name: 'PANCERZ', sub: '7d', color: VIOLET }
-  if (kind === 'spend_limit') return { name: 'GOTÓWKA', sub: 'wydatki', color: SUN }
+  if (kind === 'five_hour') return { name: 'HEALTH', sub: '5h', color: PINK }
+  if (kind === 'seven_day') return { name: 'ARMOR', sub: '7d', color: VIOLET }
+  if (kind === 'spend_limit') return { name: 'CASH', sub: 'spend', color: SUN }
   return { name: kind.toUpperCase(), sub: 'limit', color: ORANGE }
 }
 
@@ -393,7 +577,7 @@ function heat(base: string, used: number): string {
 }
 
 function fmtPct(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ',')
+  return Number.isInteger(n) ? String(n) : n.toFixed(1)
 }
 
 function fmtTokens(n: number): string {
@@ -458,19 +642,19 @@ function isWasted(limits: LimitWindow[]): boolean {
 }
 
 function mission(limits: LimitWindow[]): { text: string; color: string } {
-  if (limits.length === 0) return { text: 'CZEKAM NA PIERWSZĄ ODPOWIEDŹ...', color: TEAL }
+  if (limits.length === 0) return { text: 'WAITING FOR THE FIRST REPLY...', color: TEAL }
   const worst = Math.min(...limits.map(left))
-  if (worst <= 0) return { text: 'WASTED — czekaj na reset', color: RED }
-  if (worst <= 15) return { text: 'POLICJA NA OGONIE — zwolnij', color: PINK }
-  if (worst <= 40) return { text: 'UWAŻAJ — zapasy się kończą', color: ORANGE }
-  return { text: 'MISJA TRWA — luz, jedziemy', color: TEAL }
+  if (worst <= 0) return { text: 'WASTED — wait for the reset', color: RED }
+  if (worst <= 15) return { text: 'COPS ON YOUR TAIL — slow down', color: PINK }
+  if (worst <= 40) return { text: 'CAREFUL — supplies running low', color: ORANGE }
+  return { text: 'MISSION ON — cruising easy', color: TEAL }
 }
 
 const ACTIVITY_TEXT: Record<SceneState['activity'], string> = {
-  think: 'CLAUDE W TRASIE — robota wre...',
-  edit: 'CLAUDE PISZE KOD NA LAPTOPIE...',
-  bash: 'CLAUDE HAKUJE W TERMINALU...',
-  web: 'CLAUDE SZUKA TROPÓW PRZEZ LORNETKĘ...',
+  think: 'CLAUDE IS ON THE MOVE...',
+  edit: 'CLAUDE IS CODING ON THE LAPTOP...',
+  bash: 'CLAUDE IS HACKING IN THE TERMINAL...',
+  web: 'CLAUDE IS SCOUTING WITH BINOCULARS...',
 }
 
 function classify(tool: string): SceneState['activity'] | 'agent' {
@@ -517,28 +701,28 @@ async function pull($: any) {
 function tipFor(s: Snapshot, t: TurnInfo, now: number): string {
   const five = fiveHour(s.limits)
   const tips: string[] = [
-    'Idę po kokosa, zaraz wracam 🥥',
-    'Krótszy prompt = mniej tokenów = dłuższa misja.',
-    'Ta koszula była na promocji w Neon Beach Outlet.',
-    'Kliknij /limity, żeby schować HUD.',
-    'Czekasz na GTA 6? Ja czekam na reset limitu. Zobaczymy, co pierwsze 🌴',
-    'Koszula hawajska ✔ Okulary ✔ Zachód słońca ✔ Brakuje tylko premiery GTA 6.',
-    'Trenuję do GTA 6: 5 gwiazdek już mam, tylko w limitach 😎',
+    'Grabbing a coconut, brb 🥥',
+    'Shorter prompt = fewer tokens = longer mission.',
+    'Got this shirt on sale at the Neon Beach Outlet.',
+    'Type /neon-hud to hide the HUD.',
+    'Waiting for GTA 6? I am waiting for my limit reset. Let us see which comes first 🌴',
+    'Hawaiian shirt ✔ Shades ✔ Sunset ✔ Just missing the GTA 6 release.',
+    'Training for GTA 6: already got 5 stars, just in usage limits 😎',
   ]
   if (five) {
     const r = resetIn(five.resetsAt, now)
-    tips.push(`Zostało ${left(five)}% limitu 5h${r ? `, reset za ${r}` : ''}.`)
-    if (left(five) < 30 && r) tips.push(`Mało paliwa. Za ${r} pełny bak — idź na kawę ☕`)
+    tips.push(`${left(five)}% of your 5h limit left${r ? `, resets in ${r}` : ''}.`)
+    if (left(five) < 30 && r) tips.push(`Running low on fuel. Full tank in ${r} — go grab a coffee ☕`)
   }
   if (s.ctxPct !== undefined) {
     tips.push(
       s.ctxPct >= 80
-        ? `Kontekst ${s.ctxPct}% — pora na /compact, bo nadciąga burza.`
-        : `Kontekst ${s.ctxPct}% — spokojna woda.`,
+        ? `Context at ${s.ctxPct}% — time for /compact, a storm is coming.`
+        : `Context at ${s.ctxPct}% — calm waters.`,
     )
   }
   const total = t.cacheRead + t.cacheWrite + t.uncached
-  if (total > 0) tips.push(`Cache trafia w ${Math.round((t.cacheRead / total) * 100)}% — tanio jak w outlecie.`)
+  if (total > 0) tips.push(`Cache hits ${Math.round((t.cacheRead / total) * 100)}% — outlet prices.`)
   return tips[Math.floor(Math.random() * tips.length)] ?? tips[0]!
 }
 
@@ -555,51 +739,20 @@ function flash($: any, field: 'banner' | 'cash', text: string, ms: number, now: 
   })
 }
 
+function scheduleDrive($: any, ms: number) {
+  return $.clock.after(ms, () => {
+    void update($, scene, x => ({ ...x, isDriving: true })).catch(() => undefined)
+  })
+}
+
 function scheduleNap($: any, ms: number) {
   return $.clock.after(ms, () => {
     void update($, scene, x => ({ ...x, isNapping: true })).catch(() => undefined)
   })
 }
 
-// ── Radio ─────────────────────────────────────────────────────────
-// Fictional stations and songs, all made up for this mod
-const STATIONS: { name: string; songs: string[] }[] = [
-  {
-    name: 'Neon FM 88.5',
-    songs: ['Midnight Turbo — Chrome Hearts', 'Palm Highway — Laser Coast', 'Pink Horizon — Night Racer'],
-  },
-  {
-    name: 'Lo-Fi Beach 101.3',
-    songs: ['Kokos i deszcz — Beachtape', 'Sunset Loop — Sandy Beats', 'Hamak — Slow Waves'],
-  },
-  {
-    name: 'Talk Token 94.7',
-    songs: ['„Czy cache to nowa ropa?”', '„Limity: mit czy fakt?”', '„Prompt dnia od słuchacza”'],
-  },
-  {
-    name: 'Palm Bay Classics 97.1',
-    songs: ['Retro Sunrise — The Pixels', 'Coral Dreams — Synthia', 'Boardwalk Memories — VHS Kids'],
-  },
-  { name: 'Radio wyłączone', songs: [''] },
-]
-const RADIO_OFF = STATIONS.length - 1
-
-function pickSong(station: number, salt: number): string {
-  const songs = STATIONS[station]?.songs ?? ['']
-  return songs[Math.abs(salt) % songs.length] ?? ''
-}
-
-async function nextStation($: any) {
-  const cur = Number((await $.store.get('radio')) ?? 0)
-  const nxt = (cur + 1) % STATIONS.length
-  await $.store.set('radio', nxt)
-  const song = pickSong(nxt, Math.floor(Math.random() * 100))
-  await update($, scene, sc => ({ ...sc, radio: nxt, song }))
-  $.ui.toast(nxt === RADIO_OFF ? '📻 Radio wyłączone' : `📻 ${STATIONS[nxt]!.name} — ♪ ${song}`)
-}
-
 // ── Mission names ─────────────────────────────────────────────────
-const DISTRICTS = ['w Neon Bay', 'na Palm Strip', 'w Sunset Docks', 'na Pixel Pier', 'w Coral Heights', 'na Laser Avenue']
+const DISTRICTS = ['in Neon Bay', 'on Palm Strip', 'at Sunset Docks', 'on Pixel Pier', 'in Coral Heights', 'on Laser Avenue']
 
 function hash(text: string): number {
   let h = 0
@@ -617,7 +770,7 @@ function missionNameFor(text: string): string | undefined {
     .slice(0, 4)
   if (words.length === 0) return undefined
   const title = words.join(' ').toUpperCase()
-  return `„${title.length > 32 ? `${title.slice(0, 31)}…` : title}” ${DISTRICTS[hash(text) % DISTRICTS.length]}`
+  return `“${title.length > 32 ? `${title.slice(0, 31)}…` : title}” ${DISTRICTS[hash(text) % DISTRICTS.length]}`
 }
 
 // ── Stats and achievements (kept across sessions in $.store) ──────
@@ -634,15 +787,15 @@ type Stats = {
 const EMPTY_STATS: Stats = { missions: 0, prompts: 0, turns: 0, usd: 0, longestSec: 0, wasted: 0, models: {}, unlocked: [] }
 
 const ACHIEVEMENTS: { id: string; name: string; desc: string }[] = [
-  { id: 'first_mission', name: 'Pierwsza misja', desc: 'Zalicz pierwszą misję' },
-  { id: 'veteran', name: 'Weteran plaży', desc: '10 zaliczonych misji' },
-  { id: 'chatty', name: 'Gaduła', desc: '100 wysłanych promptów' },
-  { id: 'marathon', name: 'Maraton', desc: 'Jedna misja dłuższa niż 10 minut' },
-  { id: 'cache_master', name: 'Mistrz cache', desc: 'Cache 90%+ przy ponad 200k tokenów w sesji' },
-  { id: 'big_spender', name: 'Gruby portfel', desc: 'Wydaj łącznie $10' },
-  { id: 'night_owl', name: 'Nocny marek', desc: 'Wyślij prompt między północą a 4:00' },
-  { id: 'wanted', name: 'Poszukiwany', desc: 'Dobij do 4 gwiazdek WANTED' },
-  { id: 'survivor', name: 'Przeżyłem WASTED', desc: 'Wróć do gry po wyczerpanym limicie' },
+  { id: 'first_mission', name: 'First Mission', desc: 'Pass your first mission' },
+  { id: 'veteran', name: 'Beach Veteran', desc: 'Pass 10 missions' },
+  { id: 'chatty', name: 'Chatterbox', desc: 'Send 100 prompts' },
+  { id: 'marathon', name: 'Marathon', desc: 'One mission longer than 10 minutes' },
+  { id: 'cache_master', name: 'Cache Master', desc: '90%+ cache hits over 200k tokens in a session' },
+  { id: 'big_spender', name: 'Big Spender', desc: 'Spend $10 in total' },
+  { id: 'night_owl', name: 'Night Owl', desc: 'Send a prompt between midnight and 4 AM' },
+  { id: 'wanted', name: 'Most Wanted', desc: 'Reach a 4-star wanted level' },
+  { id: 'survivor', name: 'Back from WASTED', desc: 'Get back in the game after running out of a limit' },
 ]
 
 async function loadStats($: any): Promise<Stats> {
@@ -659,7 +812,7 @@ async function bumpStats($: any, change: (s: Stats) => void, earned: (s: Stats) 
   await $.store.set('stats', s)
   for (const id of fresh) {
     const a = ACHIEVEMENTS.find(x => x.id === id)
-    if (a) $.ui.toast(`🏆 OSIĄGNIĘCIE ODBLOKOWANE: ${a.name} — ${a.desc}`, { timeoutMs: 6000 })
+    if (a) $.ui.toast(`🏆 ACHIEVEMENT UNLOCKED: ${a.name} — ${a.desc}`, { timeoutMs: 6000 })
   }
   if (fresh.length) void $.audio.play({ asset: 'sounds/mission.wav' }).catch(() => undefined)
 }
@@ -674,16 +827,16 @@ async function statsText($: any): Promise<string> {
   const fav = Object.entries(s.models).sort((a, b) => b[1] - a[1])[0]
   const trophies = ACHIEVEMENTS.map(a => `${s.unlocked.includes(a.id) ? '🏆' : '🔒'} ${a.name} — ${a.desc}`)
   return [
-    '**STATYSTYKI GRACZA** 🌴',
+    '**PLAYER STATS** 🌴',
     '',
-    `Misje zaliczone: **${s.missions}**`,
-    `Prompty: ${s.prompts} · tury: ${s.turns}`,
-    `Wydana kasa: **$${s.usd.toFixed(2)}**`,
-    `Najdłuższa misja: ${fmtSec(s.longestSec)}`,
-    `Ulubiony model: ${fav ? `${shortModel(fav[0])} (${fav[1]} tur)` : '—'}`,
+    `Missions passed: **${s.missions}**`,
+    `Prompts: ${s.prompts} · turns: ${s.turns}`,
+    `Cash spent: **${s.usd.toFixed(2)}**`,
+    `Longest mission: ${fmtSec(s.longestSec)}`,
+    `Favourite model: ${fav ? `${shortModel(fav[0])} (${fav[1]} turns)` : '—'}`,
     `WASTED: ${s.wasted}×`,
     '',
-    `**Osiągnięcia (${s.unlocked.length}/${ACHIEVEMENTS.length})**`,
+    `**Achievements (${s.unlocked.length}/${ACHIEVEMENTS.length})**`,
     ...trophies,
   ].join('\n')
 }
@@ -692,47 +845,43 @@ async function greetOncePerDay($: any) {
   const day = new Date().toISOString().slice(0, 10)
   if ((await $.store.get('greetDay')) === day) return
   await $.store.set('greetDay', day)
-  $.ui.toast('📱 SMS od: Claude — „Jestem na plaży. Wpadaj, jak będziesz miał misję.”', { timeoutMs: 6000 })
-}
-
-async function restoreRadio($: any) {
-  const radio = Number((await $.store.get('radio')) ?? 0) % STATIONS.length
-  await update($, scene, sc => ({ ...sc, radio, song: sc.song || pickSong(radio, 0) }))
+  $.ui.toast('📱 Text from Claude: “I am at the beach. Swing by when you have got a mission.”', { timeoutMs: 6000 })
 }
 
 // ── Hooks ─────────────────────────────────────────────────────────
 export const register: Register = on => {
   const warned = new Set<string>()
   const inFlight = new Map<string, SceneState['activity']>()
+  const activeAgents = new Set<string>()
   let turnStart = 0
   let turnTools = 0
   let napTimer: { cancel: () => void } | undefined
+  let driveTimer: { cancel: () => void } | undefined
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
-      name: 'limity',
-      description: 'Pokaż / schowaj neonowy HUD limitów nad polem wiadomości',
+      name: 'neon-hud',
+      description: 'Show or hide the neon usage HUD above the prompt',
     })
     await $.command.register({
-      name: 'statystyki',
-      description: 'Statystyki gracza i osiągnięcia z neonowego HUD',
+      name: 'neon-stats',
+      description: 'Player stats and achievements from the neon HUD',
     })
     await pull($)
-    await restoreRadio($).catch(() => undefined)
     await greetOncePerDay($).catch(() => undefined)
 
     return next(e)
   })
 
-  on('command.run', { command: 'statystyki' }, async $ => {
+  on('command.run', { command: 'neon-stats' }, async $ => {
     return { text: await statsText($) }
   })
 
-  on('command.run', { command: 'limity' }, async $ => {
+  on('command.run', { command: 'neon-hud' }, async $ => {
     await pull($)
     const hidden = await update($, isHidden, v => !v)
 
-    return { text: hidden ? 'HUD schowany. /limity pokaże go znowu.' : 'HUD widoczny.' }
+    return { text: hidden ? 'HUD hidden. /neon-hud brings it back.' : 'HUD visible.' }
   })
 
   on('prompt.submit', async ($, e, next) => {
@@ -744,12 +893,14 @@ export const register: Register = on => {
     napTimer = undefined
     await update($, isWorking, () => true).catch(() => undefined)
     const missionName = missionNameFor(e.text)
+    driveTimer?.cancel()
+    driveTimer = scheduleDrive($, DRIVE_AFTER_MS)
     await update($, scene, sc => ({
       ...sc,
       activity: 'think',
       isNapping: false,
+      isDriving: false,
       missionName,
-      song: pickSong(sc.radio, hash(e.text)),
     })).catch(() => undefined)
     await update($, turn, t => ({ ...t, prompts: t.prompts + 1 })).catch(() => undefined)
     const hour = new Date().getHours()
@@ -768,14 +919,9 @@ export const register: Register = on => {
   on('tool.call', async ($, e, next) => {
     const kind = classify(e.tool)
     turnTools += 1
-    if (kind === 'agent') {
-      await update($, scene, sc => ({ ...sc, agents: sc.agents + 1 })).catch(() => undefined)
-      try {
-        return await next(e)
-      } finally {
-        await update($, scene, sc => ({ ...sc, agents: Math.max(0, sc.agents - 1) })).catch(() => undefined)
-      }
-    }
+    // Subagents are counted from their own turns (turn.start / turn.complete),
+    // which also catches ones running in the background
+    if (kind === 'agent') return next(e)
     inFlight.set(e.tool_use_id, kind)
     await setActivity($, inFlight).catch(() => undefined)
     try {
@@ -784,6 +930,17 @@ export const register: Register = on => {
       inFlight.delete(e.tool_use_id)
       await setActivity($, inFlight).catch(() => undefined)
     }
+  })
+
+  // A subagent working (foreground or background) shows the mini Claude
+  on('turn.start', async ($, e, next) => {
+    if (e.agentId && !activeAgents.has(e.agentId)) {
+      activeAgents.add(e.agentId)
+      const n = activeAgents.size
+      await update($, scene, sc => ({ ...sc, agents: n })).catch(() => undefined)
+    }
+
+    return next(e)
   })
 
   // Which model answers and at what effort: read off each main-loop request
@@ -803,6 +960,10 @@ export const register: Register = on => {
   })
 
   on('turn.complete', async ($, e, next) => {
+    if (e.agentId && activeAgents.delete(e.agentId)) {
+      const n = activeAgents.size
+      await update($, scene, sc => ({ ...sc, agents: n })).catch(() => undefined)
+    }
     if (!e.agentId) {
       inFlight.clear()
       await update($, isWorking, () => false)
@@ -832,7 +993,7 @@ export const register: Register = on => {
       // Mission passed: a long or busy turn earns the banner and the jingle
       const passed = e.reason === 'answer' && (secs >= MISSION_MIN_SEC || turnTools >= MISSION_MIN_TOOLS)
       if (passed) {
-        flash($, 'banner', 'MISJA ZALICZONA', 5200, now)
+        flash($, 'banner', 'MISSION PASSED', 5200, now)
         void $.audio.play({ asset: 'sounds/mission.wav' }).catch(() => undefined)
       }
 
@@ -858,7 +1019,9 @@ export const register: Register = on => {
           ...(cacheAll > 200_000 && tt.cacheRead / cacheAll >= 0.9 ? ['cache_master'] : []),
         ],
       ).catch(() => undefined)
-      await update($, scene, x => ({ ...x, missionName: undefined })).catch(() => undefined)
+      driveTimer?.cancel()
+      driveTimer = undefined
+      await update($, scene, x => ({ ...x, missionName: undefined, isDriving: false })).catch(() => undefined)
 
       // Nap: no new prompt for a while and Claude dozes off on the hammock
       napTimer?.cancel()
@@ -879,10 +1042,10 @@ export const register: Register = on => {
           warned.add(id)
           $.ui.toast(
             t === 0
-              ? `📱 SMS od: Limit ${label(l.kind).sub} — „WASTED. Widzimy się po resecie.”`
+              ? `📱 Text from your ${label(l.kind).sub} limit: “WASTED. See you after the reset.”`
               : t === 15
-                ? `📱 SMS od: Limit ${label(l.kind).sub} — „Zostało ${pct}%. Policja na ogonie, zwolnij.”`
-                : `📱 SMS od: Limit ${label(l.kind).sub} — „Zostało ${pct}%. Uważaj na zakrętach.”`,
+                ? `📱 Text from your ${label(l.kind).sub} limit: “${pct}% left. Cops on your tail, slow down.”`
+                : `📱 Text from your ${label(l.kind).sub} limit: “${pct}% left. Watch the corners.”`,
             { timeoutMs: 6000 },
           )
           if (t === 0) {
@@ -923,18 +1086,21 @@ export const register: Register = on => {
     const st = stars(s.limits)
     const wasted = isWasted(s.limits)
 
-    const mode: Mode = working ? sc.activity : sc.isNapping ? 'nap' : 'idle'
+    const isDriving = working && sc.activity === 'think' && !!sc.isDriving
+    const mode: Mode = working ? (isDriving ? 'drive' : sc.activity) : sc.isNapping ? 'nap' : 'idle'
     let m = mission(s.limits)
     if (!wasted && working) {
       m = {
         text:
-          (sc.missionName ? `MISJA ${sc.missionName} · ` : '') +
-          ACTIVITY_TEXT[sc.activity] +
-          (sc.agents > 0 ? ` + ekipa (${sc.agents})` : ''),
+          (sc.missionName ? `MISSION ${sc.missionName} · ` : '') +
+          (isDriving ? 'CLAUDE IS CRUISING IN THE NEON CONVERTIBLE 🚗💨' : ACTIVITY_TEXT[sc.activity]) +
+          (sc.agents > 0 ? ` + crew (${sc.agents})` : ''),
         color: SUN,
       }
+    } else if (!wasted && sc.agents > 0) {
+      m = { text: `THE CREW IS ON A SIDE JOB (${sc.agents}) — Claude waits on the beach`, color: TEAL }
     } else if (!wasted && sc.isNapping) {
-      m = { text: 'CLAUDE ŚPI NA HAMAKU — napisz coś, żeby go obudzić', color: VIOLET }
+      m = { text: 'CLAUDE IS NAPPING IN THE HAMMOCK — send a message to wake Claude up', color: VIOLET }
     }
 
     if (e.surface === 'terminal') {
@@ -986,7 +1152,7 @@ export const register: Register = on => {
           hitAll,
           hitAll >= 70 ? MONEY : hitAll >= 40 ? SUN : ORANGE,
           `${hitAll}%`,
-          `cache · ⇣ ${fmtTokens(t.cacheRead)} odczyt · ⇡ ${fmtTokens(t.cacheWrite)} zapis`,
+          `cache · ⇣ ${fmtTokens(t.cacheRead)} read · ⇡ ${fmtTokens(t.cacheWrite)} write`,
         ),
       )
     }
@@ -999,7 +1165,7 @@ export const register: Register = on => {
           l.percentUsed,
           heat(info.color, l.percentUsed),
           `${fmtPct(l.percentUsed)}%`,
-          `${info.sub}${r ? ` · ↻ ${r}` : ''} · zostało ${left(l)}%`,
+          `${info.sub}${r ? ` · ↻ ${r}` : ''} · ${left(l)}% left`,
         ),
       )
     }
@@ -1059,44 +1225,33 @@ export const register: Register = on => {
               gauges
             ) : (
               <Text color={MUTED} italic>
-                Limity pojawią się po pierwszej odpowiedzi (tylko subskrypcja).
+                Limits show up after the first reply (subscription plans only).
               </Text>
             )}
           </Box>
           <Text weight="bold" italic color={m.color}>
             {`▶ ${m.text}`}
           </Text>
-          {working && (
-            <Box flexDirection="row" alignItems="center" gap={1}>
-              <Text color={VIOLET}>
-                {sc.radio === RADIO_OFF
-                  ? '📻 radio wyłączone'
-                  : `📻 ${STATIONS[sc.radio]?.name ?? ''} · ♪ ${sc.song}`}
-              </Text>
-              <Button key="radio" plain label="Zmień stację radia" onPress={() => void nextStation($).catch(() => undefined)}>
-                <Text color={TEAL}>⏭ stacja</Text>
-              </Button>
-            </Box>
-          )}
         </Box>
+        {/* The scene on the right; the numbers keep the room they need */}
         <Box flexDirection="column" alignItems="center" gap={1}>
           <Svg
             source={sceneSvg}
-            alt="Claude w koszuli hawajskiej na plaży o zachodzie słońca"
-            width={W}
-            height={H}
+            alt="Claude in a Hawaiian shirt on a beach at sunset"
+            width={Math.round(W * 1.3)}
+            height={Math.round(H * 1.3)}
             isInteractive
           />
           <Button
             key="mascot"
             plain
-            label="Zagadaj do Claude'a"
+            label="Talk to Claude"
             onPress={() => {
               $.ui.toast(tipFor(s, t, now))
               if (sc.isNapping) void update($, scene, x => ({ ...x, isNapping: false })).catch(() => undefined)
             }}
           >
-            <Text color={TEAL}>{sc.isNapping ? '💤 obudź Claude’a' : '💬 zagadaj do Claude’a'}</Text>
+            <Text color={TEAL}>{sc.isNapping ? '💤 wake Claude up' : '💬 talk to Claude'}</Text>
           </Button>
         </Box>
       </Box>
@@ -1152,7 +1307,7 @@ function terminalBand(
           {` ${String(pct).padStart(3)}%`}
         </Text>
         <Text dimColor italic>
-          {r ? `  reset ${r}` : ''}
+          {r ? `  resets in ${r}` : ''}
         </Text>
       </Text>
     )
@@ -1186,7 +1341,7 @@ function terminalBand(
           rows
         ) : (
           <Text dimColor italic>
-            Limity pojawią się po pierwszej odpowiedzi (tylko subskrypcja).
+            Limits show up after the first reply (subscription plans only).
           </Text>
         )}
         {termInfo(Text, t)}

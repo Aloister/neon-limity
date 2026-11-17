@@ -28,9 +28,8 @@ export type SceneState = {
   lastUsd?: number
   /** The current task's title, made from the prompt. */
   missionName?: string
-  /** Radio station index into STATIONS, and the song playing on it. */
-  radio: number
-  song: string
+  /** After a while on the road Claude hops into the car. */
+  isDriving?: boolean
 }
 
 declare module 'claude-code' {
